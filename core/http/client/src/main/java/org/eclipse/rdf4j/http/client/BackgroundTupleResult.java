@@ -61,17 +61,23 @@ public class BackgroundTupleResult extends IteratingTupleQueryResult
 	protected void handleClose()
 		throws QueryEvaluationException
 	{
-		try {
-			try {
-				closed = true;
-				super.handleClose();
+		if (!closed) {
+			synchronized (this) {
+				if (!closed) {
+					closed = true;
+					try {
+						try {
+							super.handleClose();
+						}
+						finally {
+							in.close();
+						}
+					}
+					catch (IOException e) {
+						throw new QueryEvaluationException(e);
+					}
+				}
 			}
-			finally {
-				in.close();
-			}
-		}
-		catch (IOException e) {
-			throw new QueryEvaluationException(e);
 		}
 	}
 
@@ -129,8 +135,9 @@ public class BackgroundTupleResult extends IteratingTupleQueryResult
 		catch (InterruptedException e) {
 			throw new TupleQueryResultHandlerException(e);
 		}
-		if (closed)
+		if (closed) {
 			throw new TupleQueryResultHandlerException("Result closed");
+		}
 	}
 
 	@Override
