@@ -27,11 +27,23 @@ import org.eclipse.rdf4j.query.QueryEvaluationException;
  */
 public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationException> {
 
-	private volatile boolean done;
+	/**
+	 * An indicator of whether this queue is open to having more items added to it.<br/>
+	 * Set to true to lazily indicate that no more values should be added to this queue.<br/>
+	 * Note that this value is never sent to false after being set to true so once this queue is closed it
+	 * cannot be reopened.
+	 */
+	private volatile boolean done = false;
 
-	private BlockingQueue<E> queue;
+	/**
+	 * The queue of items to process.
+	 */
+	private final BlockingQueue<E> queue;
 
-	private E afterLast = createAfterLast();
+	/**
+	 * Sentinel/poison pill value used internally to identify the end of the queue.
+	 */
+	private final E afterLast = createAfterLast();
 
 	private volatile Queue<Throwable> exceptions = new LinkedList<Throwable>();
 
@@ -80,16 +92,18 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	}
 
 	/**
-	 * Indicates the method {@link #put(Object)} will not be called in the queue anymore.
+	 * Indicates the method {@link #put(Object)} should not be called in the queue anymore and any calls to it
+	 * will be noop's.
 	 */
 	public void done() {
 		done = true;
-		try {
-			queue.add(afterLast);
-		}
-		catch (IllegalStateException e) {
-			// no thread is waiting on this queue anyway
-		}
+		// Attempt to add the sentinel to the end of the queue, 
+		// but do not fail if the queue is full or unavailable
+		// Both the null and afterLast objects are defined as sentinels
+		// In addition, the close method actively clears the queue so
+		// we do not need to be as concerned about that here, 
+		// as long as users call close properly
+		queue.offer(afterLast);
 	}
 
 	/**
@@ -108,12 +122,13 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 			else {
 				take = queue.take();
 				if (done) {
-					done(); // in case the queue was full before
+					done(); 
 				}
 			}
 			if (isAfterLast(take)) {
 				checkException();
-				done(); // put afterLast back for others
+				// put afterLast back for others
+				done(); 
 				return null;
 			}
 			return take;
@@ -130,7 +145,9 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	{
 		done = true;
 		do {
-			queue.clear(); // ensure extra room is available
+			// remove all unprocessed items and then add a sentinel
+			// Note that we do not 
+			queue.clear(); 
 		}
 		while (!queue.offer(afterLast));
 		checkException();
@@ -174,6 +191,13 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 		}
 	}
 
+	/**
+	 * Identifies whether the given value is a sentinel identifying that the queue is complete.
+	 * 
+	 * @param take
+	 *        The object to check for equality with the sentinel.
+	 * @return True if the given object is null or is the same object reference as the sentinel.
+	 */
 	private boolean isAfterLast(E take) {
 		return take == null || take == afterLast;
 	}
