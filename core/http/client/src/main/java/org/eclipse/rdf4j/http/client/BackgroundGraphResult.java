@@ -183,8 +183,9 @@ public class BackgroundGraphResult extends IterationWrapper<Statement, QueryEval
 		catch (InterruptedException e) {
 			throw new RDFHandlerException(e);
 		}
-		if (closed)
+		if (closed) {
 			throw new RDFHandlerException("Result closed");
+		}
 	}
 
 	public void endRDF()
