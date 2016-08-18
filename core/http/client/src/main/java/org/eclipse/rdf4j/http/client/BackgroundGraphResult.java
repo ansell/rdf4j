@@ -96,7 +96,17 @@ public class BackgroundGraphResult extends IterationWrapper<Statement, QueryEval
 							super.handleClose();
 						}
 						finally {
-							in.close();
+							try {
+								// After checking that we ourselves cannot possibly be generating an NPE ourselves, 
+								// attempt to close the input stream we were given
+								InputStream toClose = in;
+								if (toClose != null) {
+									toClose.close();
+								}
+							}
+							catch (NullPointerException e) {
+								// Swallow NullPointerException that Apache HTTPClient is hiding behind a NotThreadSafe annotation
+							}
 						}
 					}
 					catch (IOException e) {
