@@ -64,10 +64,9 @@ public class BackgroundGraphResultHangTest {
 				"http://base.org");
 
 		gRes.run();
-
-		gRes.getNamespaces();
-
 		thrown.expect(QueryEvaluationException.class);
+		gRes.getNamespaces();
 		gRes.hasNext();
 	}
+
 }

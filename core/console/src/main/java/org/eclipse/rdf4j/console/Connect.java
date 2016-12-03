@@ -51,16 +51,14 @@ public class Connect implements Command {
 		final String target = tokens[1];
 		if ("default".equalsIgnoreCase(target)) {
 			connectDefault();
-		}
-		else {
+		} else {
 			try {
 				new URL(target);
 				// target is a valid URL
 				final String username = (tokens.length > 2) ? tokens[2] : null; // NOPMD
 				final String password = (tokens.length > 3) ? tokens[3] : null; // NOPMD
 				connectRemote(target, username, password);
-			}
-			catch (MalformedURLException e) {
+			} catch (MalformedURLException e) {
 				// assume target is a directory path
 				connectLocal(target);
 			}
@@ -68,8 +66,7 @@ public class Connect implements Command {
 	}
 
 	protected boolean connectDefault() {
-		return installNewManager(new LocalRepositoryManager(this.appInfo.getDataDirectory()),
-				"default data directory");
+		return installNewManager(new LocalRepositoryManager(this.appInfo.getDataDirectory()), "default data directory");
 	}
 
 	private boolean connectRemote(final String url, final String user, final String passwd) {
@@ -87,38 +84,32 @@ public class Connect implements Command {
 
 				// Ping the server
 				httpClient.getServerProtocol();
-			}
-			finally {
+			} finally {
 				client.shutDown();
 			}
 			final RemoteRepositoryManager manager = new RemoteRepositoryManager(url);
 			manager.setUsernameAndPassword(user, pass);
 			result = installNewManager(manager, url);
-		}
-		catch (UnauthorizedException e) {
+		} catch (UnauthorizedException e) {
 			if (user != null && pass.length() > 0) {
 				consoleIO.writeError("Authentication for user '" + user + "' failed");
 				LOGGER.warn("Authentication for user '" + user + "' failed", e);
-			}
-			else {
+			} else {
 				// Ask user for credentials
 				try {
 					consoleIO.writeln("Authentication required");
 					final String username = consoleIO.readln("Username:");
 					final String password = consoleIO.readPassword("Password:");
 					connectRemote(url, username, password);
-				}
-				catch (IOException ioe) {
+				} catch (IOException ioe) {
 					consoleIO.writeError("Failed to read user credentials");
 					LOGGER.warn("Failed to read user credentials", ioe);
 				}
 			}
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			consoleIO.writeError("Failed to access the server: " + e.getMessage());
 			LOGGER.warn("Failed to access the server", e);
-		}
-		catch (RepositoryException e) {
+		} catch (RepositoryException e) {
 			consoleIO.writeError("Failed to access the server: " + e.getMessage());
 			LOGGER.warn("Failed to access the server", e);
 		}
@@ -131,8 +122,7 @@ public class Connect implements Command {
 		boolean result = false;
 		if (dir.exists() && dir.isDirectory()) {
 			result = installNewManager(new LocalRepositoryManager(dir), dir.toString());
-		}
-		else {
+		} else {
 			consoleIO.writeError("Specified path is not an (existing) directory: " + path);
 		}
 		return result;
@@ -144,8 +134,7 @@ public class Connect implements Command {
 		if (newManagerID.equals(managerID)) {
 			consoleIO.writeln("Already connected to " + managerID);
 			installed = true;
-		}
-		else {
+		} else {
 			try {
 				newManager.initialize();
 				disconnect.execute(false);
@@ -153,8 +142,7 @@ public class Connect implements Command {
 				this.appInfo.setManagerID(newManagerID);
 				consoleIO.writeln("Connected to " + newManagerID);
 				installed = true;
-			}
-			catch (RepositoryException e) {
+			} catch (RepositoryException e) {
 				consoleIO.writeError(e.getMessage());
 				LOGGER.error("Failed to install new manager", e);
 			}

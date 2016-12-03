@@ -157,12 +157,15 @@ public class BackgroundGraphResult extends IterationWrapper<Statement, QueryEval
 		}
 		catch (RDFHandlerException e) {
 			// parsing was cancelled or interrupted
+			close();
 		}
 		catch (RDFParseException e) {
 			queue.toss(e);
+			close();
 		}
 		catch (IOException e) {
 			queue.toss(e);
+			close();
 		}
 		finally {
 			queue.done();
@@ -185,6 +188,7 @@ public class BackgroundGraphResult extends IterationWrapper<Statement, QueryEval
 			return Collections.unmodifiableMap(namespaces);
 		}
 		catch (InterruptedException e) {
+			close();
 			throw new UndeclaredThrowableException(e);
 		}
 	}
@@ -212,6 +216,7 @@ public class BackgroundGraphResult extends IterationWrapper<Statement, QueryEval
 			queue.put(st);
 		}
 		catch (InterruptedException e) {
+			close();
 			throw new RDFHandlerException(e);
 		}
 		if (isClosed()) {

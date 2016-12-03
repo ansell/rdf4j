@@ -9,11 +9,11 @@ package org.eclipse.rdf4j.http.client;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.rdf4j.RDF4JException;
@@ -34,7 +34,7 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 
 	private final E afterLast = createAfterLast();
 
-	private final Queue<Throwable> exceptions = new LinkedList<Throwable>();
+	private final Queue<Throwable> exceptions = new ConcurrentLinkedQueue<Throwable>();
 
 	/**
 	 * Creates an <tt>QueueCursor</tt> with the given (fixed) capacity and default access policy.
@@ -65,9 +65,7 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	 * QueryEvaluationException or RuntimeException it will be wrapped in a QueryEvaluationException.
 	 */
 	public void toss(Exception exception) {
-		synchronized (exceptions) {
-			exceptions.add(exception);
-		}
+		exceptions.add(exception);
 	}
 
 	/**
@@ -76,8 +74,14 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	public void put(E item)
 		throws InterruptedException
 	{
-		if (!done.get()) {
-			queue.put(item);
+		try {
+			if (!isClosed() && !done.get()) {
+				queue.put(item);
+			}
+		}
+		catch (InterruptedException e) {
+			close();
+			throw e;
 		}
 	}
 
@@ -96,12 +100,15 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	}
 
 	/**
-	 * Returns the next item in the queue or throws an exception.
+	 * Returns the next item in the queue, which may be <tt>null</tt>, or throws an exception.
 	 */
 	@Override
 	public E getNextElement()
 		throws QueryEvaluationException
 	{
+		if (isClosed()) {
+			return null;
+		}
 		try {
 			checkException();
 			E take;
@@ -119,10 +126,12 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 				done(); // put afterLast back for others
 				return null;
 			}
+			checkException();
 			return take;
 		}
 		catch (InterruptedException e) {
 			checkException();
+			close();
 			throw new QueryEvaluationException(e);
 		}
 	}
@@ -147,37 +156,36 @@ public class QueueCursor<E> extends LookAheadIteration<E, QueryEvaluationExcepti
 	public void checkException()
 		throws QueryEvaluationException
 	{
-		synchronized (exceptions) {
-			if (!exceptions.isEmpty()) {
-				try {
-					throw exceptions.remove();
-				}
-				catch (RDF4JException e) {
-					if (e instanceof QueryEvaluationException) {
-						List<StackTraceElement> stack = new ArrayList<StackTraceElement>();
-						stack.addAll(Arrays.asList(e.getStackTrace()));
-						StackTraceElement[] thisStack = new Throwable().getStackTrace();
-						stack.addAll(Arrays.asList(thisStack).subList(1, thisStack.length));
-						e.setStackTrace(stack.toArray(new StackTraceElement[stack.size()]));
-						throw e;
-					}
-					else {
-						throw new QueryEvaluationException(e);
-					}
-				}
-				catch (RuntimeException e) {
-					// any RuntimeException that is not an OpenRDFException should be
-					// reported as-is
+		if (!exceptions.isEmpty()) {
+			try {
+				close();
+				throw exceptions.remove();
+			}
+			catch (RDF4JException e) {
+				if (e instanceof QueryEvaluationException) {
 					List<StackTraceElement> stack = new ArrayList<StackTraceElement>();
 					stack.addAll(Arrays.asList(e.getStackTrace()));
 					StackTraceElement[] thisStack = new Throwable().getStackTrace();
-					stack.addAll(Arrays.asList(thisStack));
+					stack.addAll(Arrays.asList(thisStack).subList(1, thisStack.length));
 					e.setStackTrace(stack.toArray(new StackTraceElement[stack.size()]));
 					throw e;
 				}
-				catch (Throwable e) {
+				else {
 					throw new QueryEvaluationException(e);
 				}
+			}
+			catch (RuntimeException e) {
+				// any RuntimeException that is not an RDF4JException should be
+				// reported as-is
+				List<StackTraceElement> stack = new ArrayList<StackTraceElement>();
+				stack.addAll(Arrays.asList(e.getStackTrace()));
+				StackTraceElement[] thisStack = new Throwable().getStackTrace();
+				stack.addAll(Arrays.asList(thisStack));
+				e.setStackTrace(stack.toArray(new StackTraceElement[stack.size()]));
+				throw e;
+			}
+			catch (Throwable e) {
+				throw new QueryEvaluationException(e);
 			}
 		}
 	}

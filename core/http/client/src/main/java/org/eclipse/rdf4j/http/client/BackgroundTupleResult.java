@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.rdf4j.query.BindingSet;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
@@ -95,9 +94,11 @@ public class BackgroundTupleResult extends IteratingTupleQueryResult
 			return bindingNames;
 		}
 		catch (InterruptedException e) {
+			close();
 			throw new UndeclaredThrowableException(e);
 		}
 		catch (QueryEvaluationException e) {
+			close();
 			throw new UndeclaredThrowableException(e);
 		}
 	}
@@ -110,12 +111,15 @@ public class BackgroundTupleResult extends IteratingTupleQueryResult
 		}
 		catch (QueryResultHandlerException e) {
 			// parsing cancelled or interrupted
+			close();
 		}
 		catch (QueryResultParseException e) {
 			queue.toss(e);
+			close();
 		}
 		catch (IOException e) {
 			queue.toss(e);
+			close();
 		}
 		finally {
 			queue.done();
@@ -139,6 +143,7 @@ public class BackgroundTupleResult extends IteratingTupleQueryResult
 			queue.put(bindingSet);
 		}
 		catch (InterruptedException e) {
+			close();
 			throw new TupleQueryResultHandlerException(e);
 		}
 		if (isClosed()) {

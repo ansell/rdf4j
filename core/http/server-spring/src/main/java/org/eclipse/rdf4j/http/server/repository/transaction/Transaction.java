@@ -9,6 +9,7 @@ package org.eclipse.rdf4j.http.server.repository.transaction;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.rdf4j.IsolationLevel;
@@ -47,6 +49,8 @@ import org.eclipse.rdf4j.rio.Rio;
 import org.eclipse.rdf4j.rio.helpers.AbstractRDFHandler;
 import org.eclipse.rdf4j.rio.helpers.BasicParserSettings;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
 /**
  * A transaction encapsulates a single {@link Thread} and a {@link RepositoryConnection}, to enable executing
  * all operations that are part of the transaction from a single, dedicated thread. This is necessary because
@@ -55,7 +59,7 @@ import org.eclipse.rdf4j.rio.helpers.BasicParserSettings;
  * 
  * @author Jeen Broekstra
  */
-class Transaction {
+class Transaction implements AutoCloseable {
 
 	private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
@@ -65,7 +69,8 @@ class Transaction {
 
 	private final RepositoryConnection txnConnection;
 
-	private final ExecutorService executor = Executors.newSingleThreadExecutor();
+	private final ExecutorService executor = Executors.newSingleThreadExecutor(
+			new ThreadFactoryBuilder().setNameFormat("rdf4j-transaction-%d").build());
 
 	private final List<Future<?>> futures = new ArrayList<>();
 
@@ -317,7 +322,8 @@ class Transaction {
 			result = executor.submit(() -> {
 				try {
 					if (preserveBNodes) {
-						// create a reconfigured parser + inserter instead of relying on standard
+						// create a reconfigured parser + inserter instead of
+						// relying on standard
 						// repositoryconn add method.
 						RDFParser parser = Rio.createParser(format);
 						parser.getParserConfig().set(BasicParserSettings.PRESERVE_BNODE_IDS, true);
@@ -426,7 +432,8 @@ class Transaction {
 	 * @throws InterruptedException
 	 * @throws ExecutionException
 	 */
-	void close()
+	@Override
+	public void close()
 		throws InterruptedException, ExecutionException
 	{
 		if (isClosed.compareAndSet(false, true)) {
@@ -442,7 +449,20 @@ class Transaction {
 				result.get();
 			}
 			finally {
-				executor.shutdown();
+				try {
+					executor.shutdown();
+					executor.awaitTermination(10, TimeUnit.SECONDS);
+				}
+				catch (InterruptedException e) {
+					// Need to propagate this to ensure that callers are
+					// also interrupted
+					throw new UndeclaredThrowableException(e);
+				}
+				finally {
+					if (!executor.isShutdown()) {
+						executor.shutdownNow();
+					}
+				}
 			}
 		}
 	}
@@ -485,7 +505,8 @@ class Transaction {
 			IRI predicate = SESAME.WILDCARD.equals(st.getPredicate()) ? null : st.getPredicate();
 			Value object = SESAME.WILDCARD.equals(st.getObject()) ? null : st.getObject();
 
-			// use the RepositoryConnection.clear operation if we're removing all statements
+			// use the RepositoryConnection.clear operation if we're removing
+			// all statements
 			final boolean clearAllTriples = subject == null && predicate == null && object == null;
 
 			try {
