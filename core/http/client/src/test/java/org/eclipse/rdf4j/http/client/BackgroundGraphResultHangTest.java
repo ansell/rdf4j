@@ -63,8 +63,8 @@ public class BackgroundGraphResultHangTest {
 				new ByteArrayInputStream(data.getBytes(Charset.forName("UTF-8"))), Charset.forName("UTF-8"),
 				"http://base.org");
 
-		gRes.run();
 		thrown.expect(QueryEvaluationException.class);
+		gRes.run();
 		gRes.getNamespaces();
 		gRes.hasNext();
 	}
