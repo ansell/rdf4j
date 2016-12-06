@@ -301,9 +301,7 @@ public class Federation implements Sail, Executor, FederatedServiceResolverClien
 					executor.awaitTermination(10, TimeUnit.SECONDS);
 				}
 				catch (InterruptedException e) {
-					// Need to propagate this to ensure that callers are
-					// also interrupted
-					throw new UndeclaredThrowableException(e);
+					Thread.currentThread().interrupt();
 				}
 				finally {
 					if (!executor.isShutdown()) {
