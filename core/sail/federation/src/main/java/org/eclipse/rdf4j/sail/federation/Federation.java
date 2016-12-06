@@ -84,18 +84,22 @@ public class Federation implements Sail, Executor, FederatedServiceResolverClien
 	/** dependent life cycle */
 	private volatile FederatedServiceResolverImpl dependentServiceResolver;
 
+	@Override
 	public File getDataDir() {
 		return dataDir;
 	}
 
+	@Override
 	public void setDataDir(File dataDir) {
 		this.dataDir = dataDir;
 	}
 
+	@Override
 	public ValueFactory getValueFactory() {
 		return SimpleValueFactory.getInstance();
 	}
 
+	@Override
 	public boolean isWritable()
 		throws SailException
 	{
@@ -188,6 +192,7 @@ public class Federation implements Sail, Executor, FederatedServiceResolverClien
 	 * @param reslover
 	 *        The SERVICE resolver to set.
 	 */
+	@Override
 	public synchronized void setFederatedServiceResolver(FederatedServiceResolver resolver) {
 		this.serviceResolver = resolver;
 		for (Repository member : members) {
@@ -315,10 +320,12 @@ public class Federation implements Sail, Executor, FederatedServiceResolverClien
 	/**
 	 * Required by {@link java.util.concurrent.Executor Executor} interface.
 	 */
+	@Override
 	public void execute(Runnable command) {
 		executor.execute(command);
 	}
 
+	@Override
 	public SailConnection getConnection()
 		throws SailException
 	{
