@@ -323,21 +323,25 @@ public class Federation implements Sail, Executor, FederatedServiceResolverClien
 		throws SailException
 	{
 		List<RepositoryConnection> connections = new ArrayList<RepositoryConnection>(members.size());
+		boolean allGood = false;
 		try {
 			for (Repository member : members) {
 				connections.add(member.getConnection());
 			}
-			return readOnly ? new ReadOnlyConnection(this, connections)
+			SailConnection result = readOnly ? new ReadOnlyConnection(this, connections)
 					: new WritableConnection(this, connections);
+			allGood = true;
+			return result;
 		}
 		catch (RepositoryException e) {
-			closeAll(connections);
 			throw new SailException(e);
 		}
-		catch (RuntimeException e) {
-			closeAll(connections);
-			throw e;
+		finally {
+			if (!allGood) {
+				closeAll(connections);
+			}
 		}
+
 	}
 
 	protected EvaluationStrategy createEvaluationStrategy(TripleSource tripleSource, Dataset dataset,
