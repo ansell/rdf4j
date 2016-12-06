@@ -220,7 +220,7 @@ public abstract class TupleQueryResultTest {
 					RepositoryConnection nextCon = rep.getConnection();) {
 				TupleQueryResultWriter sparqlWriter = QueryResultIO.createTupleWriter(
 						TupleQueryResultFormat.SPARQL, stream);
-				TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL,
+				TupleQuery tupleQuery = nextCon.prepareTupleQuery(QueryLanguage.SPARQL,
 						"SELECT ?s ?p ?o WHERE { ?s ?p ?o . }");
 				tupleQuery.setIncludeInferred(false);
 				tupleQuery.evaluate(sparqlWriter);
