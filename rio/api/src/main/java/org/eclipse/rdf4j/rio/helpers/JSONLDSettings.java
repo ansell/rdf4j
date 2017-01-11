@@ -7,6 +7,9 @@
  *******************************************************************************/
 package org.eclipse.rdf4j.rio.helpers;
 
+import java.util.Collections;
+import java.util.Map;
+
 import org.eclipse.rdf4j.rio.RioSetting;
 
 /**
@@ -79,7 +82,43 @@ public class JSONLDSettings {
 	 * Default to false
 	 */
 	public static final RioSetting<Boolean> HIERARCHICAL_VIEW = new RioSettingImpl<>(
-			"org.eclipse.rdf4j.rio.jsonld.hierarchicalview", "Hierarchical representation of the JSON", Boolean.FALSE);
+			"org.eclipse.rdf4j.rio.jsonld.hierarchicalview", "Hierarchical representation of the JSON",
+			Boolean.FALSE);
+
+	/**
+	 * If set to a non-null, non-empty {@link String}, {@link #LOCAL_CONTEXT} does not have a value set, and
+	 * remote context retrieval is not disabled, the given context will be retrieved and used for JSON-LD
+	 * processing.
+	 * <p>
+	 * To disable all remote context retrieval, set the system property
+	 * <code>com.github.jsonldjava.disallowRemoteContextLoading</code> to <tt>true</tt>.
+	 * <p>
+	 * Alternatively, contexts can be
+	 * <a href="https://github.com/jsonld-java/jsonld-java#loading-contexts-from-classpathjar">stored on the
+	 * classpath and retrieved without network activity</a>.
+	 * <p>
+	 * Defaults to the empty string <code>""</code> but not used unless explicitly set.
+	 * <p>
+	 * Must not be set if {@link #LOCAL_CONTEXT} is also set.
+	 *
+	 * @see <a href="http://json-ld.org/spec/latest/json-ld-api/#context-processing-algorithm">JSONLD Context
+	 *      Processing Algorithm</a>
+	 */
+	public static final RioSetting<String> REMOTE_CONTEXT = new RioSettingImpl<String>(
+			"org.eclipse.rdf4j.rio.jsonld.remotecontext", "Remote Context", "");
+
+	/**
+	 * If set to a non-null {@link Map}, it will be used as the context for JSON-LD processing.
+	 * <p>
+	 * Defaults to the empty Map, {@link Collections#emptyMap()} but not used unless explicitly set.
+	 * <p>
+	 * Must not be set if {@link #REMOTE_CONTEXT} is also set.
+	 *
+	 * @see <a href="http://json-ld.org/spec/latest/json-ld-api/#context-processing-algorithm">JSONLD Context
+	 *      Processing Algorithm</a>
+	 */
+	public static final RioSetting<Map<String, Object>> LOCAL_CONTEXT = new RioSettingImpl<Map<String, Object>>(
+			"org.eclipse.rdf4j.rio.jsonld.localcontext", "Local Context", Collections.emptyMap());
 
 	/**
 	 * Private default constructor.
