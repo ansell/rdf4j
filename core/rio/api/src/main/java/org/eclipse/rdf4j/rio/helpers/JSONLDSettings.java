@@ -7,6 +7,9 @@
  *******************************************************************************/
 package org.eclipse.rdf4j.rio.helpers;
 
+import java.util.Collections;
+import java.util.Map;
+
 import org.eclipse.rdf4j.rio.RioSetting;
 
 /**
@@ -72,6 +75,37 @@ public class JSONLDSettings {
 	 */
 	public static final RioSetting<JSONLDMode> JSONLD_MODE = new RioSettingImpl<JSONLDMode>(
 			"org.eclipse.rdf4j.rio.jsonld.mode", "JSONLD Mode", JSONLDMode.EXPAND);
+
+	/**
+	 * If set to a non-null, non-empty {@link String}, {@link #LOCAL_CONTEXT} does not have a value set, and
+	 * remote context retrieval is not disabled, the given context will be retrieved and will replace any
+	 * other context given in the document.
+	 * <p>
+	 * To disable all remote context retrieval, set the system property
+	 * <code>com.github.jsonldjava.disallowRemoteContextLoading</code> to <tt>true</tt>.
+	 * <p>
+	 * Alternatively, contexts can be
+	 * <a href="https://github.com/jsonld-java/jsonld-java#loading-contexts-from-classpathjar">stored on the
+	 * classpath and retrieved without network activity</a>.
+	 * <p>
+	 * Defaults to the empty string <code>""</code>.
+	 *
+	 * @see <a href="http://json-ld.org/spec/latest/json-ld-api/#context-processing-algorithm">JSONLD Context
+	 *      Processing Algorithm</a>
+	 */
+	public static final RioSetting<String> REMOTE_CONTEXT = new RioSettingImpl<String>(
+			"org.eclipse.rdf4j.rio.jsonld.remotecontext", "Remote Context", "");
+
+	/**
+	 * If set to a non-null {@link Map}, it will replace any other context given in a JSONLD document.
+	 * <p>
+	 * Defaults to the empty Map, {@link Collections#emptyMap()}.
+	 *
+	 * @see <a href="http://json-ld.org/spec/latest/json-ld-api/#context-processing-algorithm">JSONLD Context
+	 *      Processing Algorithm</a>
+	 */
+	public static final RioSetting<Map<String, Object>> LOCAL_CONTEXT = new RioSettingImpl<Map<String, Object>>(
+			"org.eclipse.rdf4j.rio.jsonld.localcontext", "Local Context", Collections.emptyMap());
 
 	/**
 	 * Private default constructor.
