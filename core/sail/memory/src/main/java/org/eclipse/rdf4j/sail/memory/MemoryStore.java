@@ -9,6 +9,7 @@ package org.eclipse.rdf4j.sail.memory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -56,7 +57,7 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 	/**
 	 * Factory/cache for MemValue objects.
 	 */
-	private SailStore store;
+	private volatile SailStore store;
 
 	private volatile boolean persist = false;
 
@@ -191,43 +192,61 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 	/**
 	 * @return Returns the {@link EvaluationStrategy}.
 	 */
-	public synchronized EvaluationStrategyFactory getEvaluationStrategyFactory() {
-		if (evalStratFactory == null) {
-			evalStratFactory = new StrictEvaluationStrategyFactory(getFederatedServiceResolver());
+	public EvaluationStrategyFactory getEvaluationStrategyFactory() {
+		EvaluationStrategyFactory result = evalStratFactory;
+		if (result == null) {
+			synchronized (this) {
+				result = evalStratFactory;
+				if (result == null) {
+					result = evalStratFactory = new StrictEvaluationStrategyFactory(
+							getFederatedServiceResolver());
+				}
+			}
 		}
-		evalStratFactory.setQuerySolutionCacheThreshold(getIterationCacheSyncThreshold());
-		return evalStratFactory;
+		result.setQuerySolutionCacheThreshold(getIterationCacheSyncThreshold());
+		return result;
 	}
 
 	/**
 	 * Sets the {@link EvaluationStrategy} to use.
 	 */
-	public synchronized void setEvaluationStrategyFactory(EvaluationStrategyFactory factory) {
-		evalStratFactory = factory;
+	public void setEvaluationStrategyFactory(EvaluationStrategyFactory factory) {
+		evalStratFactory = Objects.requireNonNull(factory, "EvaluationStrategyFactory cannot be null");
 	}
 
 	/**
 	 * @return Returns the SERVICE resolver.
 	 */
-	public synchronized FederatedServiceResolver getFederatedServiceResolver() {
-		if (serviceResolver == null) {
-			if (dependentServiceResolver == null) {
-				dependentServiceResolver = new FederatedServiceResolverImpl();
+	public FederatedServiceResolver getFederatedServiceResolver() {
+		FederatedServiceResolver result = serviceResolver;
+		if (result == null) {
+			synchronized (this) {
+				result = serviceResolver;
+				if (result == null) {
+					if (dependentServiceResolver == null) {
+						dependentServiceResolver = new FederatedServiceResolverImpl();
+					}
+					result = serviceResolver = dependentServiceResolver;
+				}
 			}
-			return serviceResolver = dependentServiceResolver;
 		}
-		return serviceResolver;
+		return result;
 	}
 
 	/**
 	 * Overrides the {@link FederatedServiceResolver} used by this instance, but the given resolver is not
 	 * shutDown when this instance is.
 	 * 
-	 * @param reslover
+	 * @param resolver
 	 *        The SERVICE resolver to set.
 	 */
-	public synchronized void setFederatedServiceResolver(FederatedServiceResolver reslover) {
-		this.serviceResolver = reslover;
+	public void setFederatedServiceResolver(FederatedServiceResolver resolver) {
+		this.serviceResolver = resolver;
+		// Shutdown any internal service resolver that was created before this point
+		FederatedServiceResolverImpl toShutdownDependentServiceResolver = dependentServiceResolver;
+		if (toShutdownDependentServiceResolver != null) {
+			toShutdownDependentServiceResolver.shutDown();
+		}
 	}
 
 	/**
@@ -242,7 +261,7 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 	{
 		logger.debug("Initializing MemoryStore...");
 
-		this.store = new MemorySailStore(debugEnabled());
+		SailStore toInitialiseStore = store = new MemorySailStore(debugEnabled());
 
 		if (persist) {
 			File dataDir = getDataDir();
@@ -269,10 +288,10 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 					logger.warn("Ignoring empty data file: {}", dataFile);
 				}
 				else {
-					SailSink explicit = store.getExplicitSailSource().sink(IsolationLevels.NONE);
-					SailSink inferred = store.getInferredSailSource().sink(IsolationLevels.NONE);
+					SailSink explicit = toInitialiseStore.getExplicitSailSource().sink(IsolationLevels.NONE);
+					SailSink inferred = toInitialiseStore.getInferredSailSource().sink(IsolationLevels.NONE);
 					try {
-						new FileIO(store.getValueFactory()).read(dataFile, explicit, inferred);
+						new FileIO(toInitialiseStore.getValueFactory()).read(dataFile, explicit, inferred);
 						logger.debug("Data file read successfully");
 					}
 					catch (IOException e) {
@@ -280,12 +299,32 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 						throw new SailException(e);
 					}
 					finally {
-						explicit.prepare();
-						explicit.flush();
-						explicit.close();
-						inferred.prepare();
-						inferred.flush();
-						inferred.close();
+						try {
+							try {
+								explicit.prepare();
+							}
+							finally {
+								try {
+									explicit.flush();
+								}
+								finally {
+									explicit.close();
+								}
+							}
+						}
+						finally {
+							try {
+								inferred.prepare();
+							}
+							finally {
+								try {
+									inferred.flush();
+								}
+								finally {
+									inferred.close();
+								}
+							}
+						}
 					}
 				}
 			}
@@ -304,15 +343,21 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 					dirLock = locker.lockOrFail();
 
 					logger.debug("Initializing data file...");
-					SailDataset explicit = store.getExplicitSailSource().dataset(IsolationLevels.SNAPSHOT);
-					SailDataset inferred = store.getInferredSailSource().dataset(IsolationLevels.SNAPSHOT);
+					SailDataset explicit = toInitialiseStore.getExplicitSailSource().dataset(
+							IsolationLevels.SNAPSHOT);
+					SailDataset inferred = toInitialiseStore.getInferredSailSource().dataset(
+							IsolationLevels.SNAPSHOT);
 					try {
-						new FileIO(store.getValueFactory()).write(explicit, inferred, syncFile, dataFile);
+						new FileIO(toInitialiseStore.getValueFactory()).write(explicit, inferred, syncFile,
+								dataFile);
 					}
 					finally {
-						explicit.close();
-						inferred.close();
-
+						try {
+							explicit.close();
+						}
+						finally {
+							inferred.close();
+						}
 					}
 					logger.debug("Data file initialized");
 				}
@@ -337,19 +382,35 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 		throws SailException
 	{
 		try {
-			cancelSyncTimer();
-			sync();
-
-			store.close();
-			dataFile = null;
-			syncFile = null;
+			try {
+				cancelSyncTimer();
+			}
+			finally {
+				try {
+					sync();
+				}
+				finally {
+					SailStore toCloseStore = store;
+					if (toCloseStore != null) {
+						toCloseStore.close();
+					}
+					dataFile = null;
+					syncFile = null;
+				}
+			}
 		}
 		finally {
-			if (dirLock != null) {
-				dirLock.release();
+			try {
+				Lock toReleaseDirLock = dirLock;
+				if (toReleaseDirLock != null) {
+					toReleaseDirLock.release();
+				}
 			}
-			if (dependentServiceResolver != null) {
-				dependentServiceResolver.shutDown();
+			finally {
+				FederatedServiceResolverImpl toCloseDependentServiceResolver = dependentServiceResolver;
+				if (toCloseDependentServiceResolver != null) {
+					toCloseDependentServiceResolver.shutDown();
+				}
 			}
 		}
 	}
@@ -431,18 +492,20 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 
 	protected void cancelSyncTask() {
 		synchronized (syncTimerSemaphore) {
-			if (syncTimerTask != null) {
-				syncTimerTask.cancel();
-				syncTimerTask = null;
+			TimerTask toCancelSyncTask = syncTimerTask;
+			syncTimerTask = null;
+			if (toCancelSyncTask != null) {
+				toCancelSyncTask.cancel();
 			}
 		}
 	}
 
 	protected void cancelSyncTimer() {
 		synchronized (syncTimerSemaphore) {
-			if (syncTimer != null) {
-				syncTimer.cancel();
-				syncTimer = null;
+			Timer toCancelSyncTimer = syncTimer;
+			syncTimer = null;
+			if (toCancelSyncTimer != null) {
+				toCancelSyncTimer.cancel();
 			}
 		}
 	}
@@ -460,14 +523,20 @@ public class MemoryStore extends AbstractNotifyingSail implements FederatedServi
 				logger.debug("syncing data to file...");
 				try {
 					IsolationLevels level = IsolationLevels.SNAPSHOT;
-					SailDataset explicit = store.getExplicitSailSource().dataset(level);
-					SailDataset inferred = store.getInferredSailSource().dataset(level);
+					SailStore toSyncStore = store;
+					SailDataset explicit = toSyncStore.getExplicitSailSource().dataset(level);
+					SailDataset inferred = toSyncStore.getInferredSailSource().dataset(level);
 					try {
-						new FileIO(store.getValueFactory()).write(explicit, inferred, syncFile, dataFile);
+						new FileIO(toSyncStore.getValueFactory()).write(explicit, inferred, syncFile,
+								dataFile);
 					}
 					finally {
-						explicit.close();
-						inferred.close();
+						try {
+							explicit.close();
+						}
+						finally {
+							inferred.close();
+						}
 					}
 					contentsChanged = false;
 					logger.debug("Data synced to file");

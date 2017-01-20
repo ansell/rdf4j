@@ -12,6 +12,7 @@ import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.WeakHashMap;
 
 /**
@@ -94,15 +95,20 @@ public class WeakObjectRegistry<E> extends AbstractSet<E> {
 
 	@Override
 	public boolean add(E object) {
-		WeakReference<E> ref = new WeakReference<E>(object);
+		WeakReference<E> ref = new WeakReference<E>(
+				Objects.requireNonNull(object, "Cannot add null objects to the WeakObjectRegistry"));
 
-		ref = objectMap.put(object, ref);
+		WeakReference<E> putIfAbsent = objectMap.putIfAbsent(object, ref);
 
-		if (ref != null && ref.get() != null) {
-			// A duplicate was added which replaced the existing object. Undo this
-			// operation.
-			objectMap.put(ref.get(), ref);
-			return false;
+		if (putIfAbsent != null) {
+			if (putIfAbsent.get() == null) {
+				// Reference was garbage collected, replace with a non-null reference and return true
+				objectMap.put(object, ref);
+				return true;
+			}
+			else {
+				return false;
+			}
 		}
 
 		return true;

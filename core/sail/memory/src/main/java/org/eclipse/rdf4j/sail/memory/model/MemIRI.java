@@ -39,7 +39,7 @@ public class MemIRI implements IRI, MemResource {
 	/**
 	 * The MemURI's hash code, 0 if not yet initialized.
 	 */
-	private int hashCode = 0;
+	private volatile int hashCode = 0;
 
 	/**
 	 * The list of statements for which this MemURI is the subject.
@@ -77,7 +77,7 @@ public class MemIRI implements IRI, MemResource {
 	 */
 	public MemIRI(Object creator, String namespace, String localName) {
 		this.creator = creator;
-		this.namespace = namespace;
+		this.namespace = namespace.intern();
 		this.localName = localName;
 	}
 
@@ -124,11 +124,13 @@ public class MemIRI implements IRI, MemResource {
 
 	@Override
 	public int hashCode() {
-		if (hashCode == 0) {
-			hashCode = toString().hashCode();
+		int result = hashCode;
+		if (result == 0) {
+			// no need to synchronize as the result will be the same
+			result = hashCode = toString().hashCode();
 		}
 
-		return hashCode;
+		return result;
 	}
 
 	public Object getCreator() {
@@ -136,51 +138,70 @@ public class MemIRI implements IRI, MemResource {
 	}
 
 	public boolean hasStatements() {
-		return subjectStatements != null || predicateStatements != null || objectStatements != null
-				|| contextStatements != null;
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		MemStatementList toCheckPredicateStatements = predicateStatements;
+		MemStatementList toCheckObjectStatements = objectStatements;
+		MemStatementList toCheckContextStatements = contextStatements;
+		if (toCheckSubjectStatements != null && !toCheckSubjectStatements.isEmpty()) {
+			return true;
+		}
+		else if (toCheckPredicateStatements != null && !toCheckPredicateStatements.isEmpty()) {
+			return true;
+		}
+		else if (toCheckObjectStatements != null && !toCheckObjectStatements.isEmpty()) {
+			return true;
+		}
+		else if (toCheckContextStatements != null && !toCheckContextStatements.isEmpty()) {
+			return true;
+		}
+		return false;
 	}
 
 	public MemStatementList getSubjectStatementList() {
-		if (subjectStatements == null) {
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		if (toCheckSubjectStatements == null) {
 			return EMPTY_LIST;
 		}
 		else {
-			return subjectStatements;
+			return toCheckSubjectStatements;
 		}
 	}
 
 	public int getSubjectStatementCount() {
-		if (subjectStatements == null) {
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		if (toCheckSubjectStatements == null) {
 			return 0;
 		}
 		else {
-			return subjectStatements.size();
+			return toCheckSubjectStatements.size();
 		}
 	}
 
 	public void addSubjectStatement(MemStatement st) {
-		if (subjectStatements == null) {
-			subjectStatements = new MemStatementList(4);
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		if (toCheckSubjectStatements == null) {
+			synchronized(this) {
+				toCheckSubjectStatements = subjectStatements;
+				if(toCheckSubjectStatements == null) {
+					toCheckSubjectStatements = subjectStatements = new MemStatementList(4);
+				}
+			}
 		}
 
-		subjectStatements.add(st);
+		toCheckSubjectStatements.add(st);
 	}
 
 	public void removeSubjectStatement(MemStatement st) {
-		subjectStatements.remove(st);
-
-		if (subjectStatements.isEmpty()) {
-			subjectStatements = null;
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		if(toCheckSubjectStatements != null) {
+			toCheckSubjectStatements.remove(st);
 		}
 	}
 
 	public void cleanSnapshotsFromSubjectStatements(int currentSnapshot) {
-		if (subjectStatements != null) {
-			subjectStatements.cleanSnapshots(currentSnapshot);
-
-			if (subjectStatements.isEmpty()) {
-				subjectStatements = null;
-			}
+		MemStatementList toCheckSubjectStatements = subjectStatements;
+		if (toCheckSubjectStatements != null) {
+			toCheckSubjectStatements.cleanSnapshots(currentSnapshot);
 		}
 	}
 
@@ -190,11 +211,12 @@ public class MemIRI implements IRI, MemResource {
 	 * @return a MemStatementList containing the statements.
 	 */
 	public MemStatementList getPredicateStatementList() {
-		if (predicateStatements == null) {
+		MemStatementList toReturnPredicateStatements = predicateStatements;
+		if (toReturnPredicateStatements == null) {
 			return EMPTY_LIST;
 		}
 		else {
-			return predicateStatements;
+			return toReturnPredicateStatements;
 		}
 	}
 
@@ -204,11 +226,12 @@ public class MemIRI implements IRI, MemResource {
 	 * @return An integer larger than or equal to 0.
 	 */
 	public int getPredicateStatementCount() {
-		if (predicateStatements == null) {
+		MemStatementList toReturnPredicateStatements = predicateStatements;
+		if (toReturnPredicateStatements == null) {
 			return 0;
 		}
 		else {
-			return predicateStatements.size();
+			return toReturnPredicateStatements.size();
 		}
 	}
 
@@ -216,21 +239,26 @@ public class MemIRI implements IRI, MemResource {
 	 * Adds a statement to this MemURI's list of statements for which it is the predicate.
 	 */
 	public void addPredicateStatement(MemStatement st) {
-		if (predicateStatements == null) {
-			predicateStatements = new MemStatementList(4);
+		MemStatementList toAddPredicateStatements = predicateStatements;
+		if (toAddPredicateStatements == null) {
+			synchronized(this) {
+				toAddPredicateStatements = predicateStatements;
+				if (toAddPredicateStatements == null) {
+					toAddPredicateStatements = predicateStatements = new MemStatementList(4);
+				}
+			}
 		}
 
-		predicateStatements.add(st);
+		toAddPredicateStatements.add(st);
 	}
 
 	/**
 	 * Removes a statement from this MemURI's list of statements for which it is the predicate.
 	 */
 	public void removePredicateStatement(MemStatement st) {
-		predicateStatements.remove(st);
-
-		if (predicateStatements.isEmpty()) {
-			predicateStatements = null;
+		MemStatementList toCheckPredicateStatements = predicateStatements;
+		if(toCheckPredicateStatements != null) {
+			toCheckPredicateStatements.remove(st);
 		}
 	}
 
@@ -242,98 +270,104 @@ public class MemIRI implements IRI, MemResource {
 	 *        The current snapshot version.
 	 */
 	public void cleanSnapshotsFromPredicateStatements(int currentSnapshot) {
-		if (predicateStatements != null) {
-			predicateStatements.cleanSnapshots(currentSnapshot);
-
-			if (predicateStatements.isEmpty()) {
-				predicateStatements = null;
-			}
+		MemStatementList toCheckPredicateStatements = predicateStatements;
+		if (toCheckPredicateStatements != null) {
+			toCheckPredicateStatements.cleanSnapshots(currentSnapshot);
 		}
 	}
 
 	public MemStatementList getObjectStatementList() {
-		if (objectStatements == null) {
+		MemStatementList toCheckObjectStatements = objectStatements;
+		if (toCheckObjectStatements == null) {
 			return EMPTY_LIST;
 		}
 		else {
-			return objectStatements;
+			return toCheckObjectStatements;
 		}
 	}
 
 	public int getObjectStatementCount() {
-		if (objectStatements == null) {
+		MemStatementList toCheckObjectStatements = objectStatements;
+		if (toCheckObjectStatements == null) {
 			return 0;
 		}
 		else {
-			return objectStatements.size();
+			return toCheckObjectStatements.size();
 		}
 	}
 
 	public void addObjectStatement(MemStatement st) {
-		if (objectStatements == null) {
-			objectStatements = new MemStatementList(4);
+		MemStatementList toCheckObjectStatements = objectStatements;
+		if (toCheckObjectStatements == null) {
+			synchronized(this) {
+				toCheckObjectStatements = objectStatements;
+				if(toCheckObjectStatements == null) {
+					toCheckObjectStatements = objectStatements = new MemStatementList(4);
+				}
+			}
 		}
-		objectStatements.add(st);
+		toCheckObjectStatements.add(st);
 	}
 
 	public void removeObjectStatement(MemStatement st) {
-		objectStatements.remove(st);
-		if (objectStatements.isEmpty()) {
-			objectStatements = null;
+		MemStatementList toCheckObjectStatements = objectStatements;
+		if(toCheckObjectStatements != null) {
+			toCheckObjectStatements.remove(st);
 		}
 	}
 
 	public void cleanSnapshotsFromObjectStatements(int currentSnapshot) {
-		if (objectStatements != null) {
-			objectStatements.cleanSnapshots(currentSnapshot);
-
-			if (objectStatements.isEmpty()) {
-				objectStatements = null;
-			}
+		MemStatementList toCheckObjectStatements = objectStatements;
+		if (toCheckObjectStatements != null) {
+			toCheckObjectStatements.cleanSnapshots(currentSnapshot);
 		}
 	}
 
 	public MemStatementList getContextStatementList() {
-		if (contextStatements == null) {
+		MemStatementList toCheckContextStatements = contextStatements;
+		if (toCheckContextStatements == null) {
 			return EMPTY_LIST;
 		}
 		else {
-			return contextStatements;
+			return toCheckContextStatements;
 		}
 	}
 
 	public int getContextStatementCount() {
-		if (contextStatements == null) {
+		MemStatementList toCheckContextStatements = contextStatements;
+		if (toCheckContextStatements == null) {
 			return 0;
 		}
 		else {
-			return contextStatements.size();
+			return toCheckContextStatements.size();
 		}
 	}
 
 	public void addContextStatement(MemStatement st) {
-		if (contextStatements == null) {
-			contextStatements = new MemStatementList(4);
+		MemStatementList toCheckContextStatements = contextStatements;
+		if (toCheckContextStatements == null) {
+			synchronized(this) {
+				toCheckContextStatements = contextStatements;
+				if(toCheckContextStatements == null) {
+					toCheckContextStatements = contextStatements = new MemStatementList(4);
+				}
+			}
 		}
 
-		contextStatements.add(st);
+		toCheckContextStatements.add(st);
 	}
 
 	public void removeContextStatement(MemStatement st) {
-		contextStatements.remove(st);
-
-		if (contextStatements.isEmpty()) {
-			contextStatements = null;
+		MemStatementList toCheckContextStatements = contextStatements;
+		if(toCheckContextStatements != null) {
+			toCheckContextStatements.remove(st);
 		}
 	}
 
 	public void cleanSnapshotsFromContextStatements(int currentSnapshot) {
-		if (contextStatements != null) {
-			contextStatements.cleanSnapshots(currentSnapshot);
-
-			if (contextStatements.isEmpty()) {
-				contextStatements = null;
-			}
+		MemStatementList toCheckContextStatements = contextStatements;
+		if (toCheckContextStatements != null) {
+			toCheckContextStatements.cleanSnapshots(currentSnapshot);
 		}
 	}
 }

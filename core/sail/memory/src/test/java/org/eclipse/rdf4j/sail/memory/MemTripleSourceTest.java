@@ -88,13 +88,21 @@ public class MemTripleSourceTest {
 	public void tearDown()
 		throws Exception
 	{
-		if (snapshot != null) {
-			snapshot.close();
+		try {
+			if (snapshot != null) {
+				snapshot.close();
+			}
 		}
-		if (source != null) {
-			source.close();
+		finally {
+			try {
+				if (source != null) {
+					source.close();
+				}
+			}
+			finally {
+				store.shutDown();
+			}
 		}
-		store.shutDown();
 	}
 
 	/**

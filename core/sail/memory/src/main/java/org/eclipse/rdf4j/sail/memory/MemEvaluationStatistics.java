@@ -71,10 +71,10 @@ class MemEvaluationStatistics extends EvaluationStatistics {
 			}
 
 			// Perform look-ups for value-equivalents of the specified values
-			MemResource memSubj = valueFactory.getMemResource((Resource)subj);
-			MemIRI memPred = valueFactory.getMemURI((IRI)pred);
-			MemValue memObj = valueFactory.getMemValue(obj);
-			MemResource memContext = valueFactory.getMemResource((Resource)context);
+			MemResource memSubj = valueFactory.getMemResourceOrNull((Resource)subj);
+			MemIRI memPred = valueFactory.getMemURIOrNull((IRI)pred);
+			MemValue memObj = valueFactory.getMemValueOrNull(obj);
+			MemResource memContext = valueFactory.getMemResourceOrNull((Resource)context);
 
 			if (subj != null && memSubj == null || pred != null && memPred == null
 					|| obj != null && memObj == null || context != null && memContext == null)

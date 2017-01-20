@@ -112,8 +112,12 @@ class MemorySailStore implements SailStore {
 		try {
 			Lock stLock = statementListLockManager.getWriteLock();
 			try {
-				valueFactory.clear();
-				statements.clear();
+				try {
+					valueFactory.clear();
+				}
+				finally {
+					statements.clear();
+				}
 			}
 			finally {
 				stLock.release();
@@ -161,19 +165,19 @@ class MemorySailStore implements SailStore {
 			Value obj, Boolean explicit, int snapshot, Resource... contexts)
 	{
 		// Perform look-ups for value-equivalents of the specified values
-		MemResource memSubj = valueFactory.getMemResource(subj);
+		MemResource memSubj = valueFactory.getMemResourceOrNull(subj);
 		if (subj != null && memSubj == null) {
 			// non-existent subject
 			return new EmptyIteration<MemStatement, SailException>();
 		}
 
-		MemIRI memPred = valueFactory.getMemURI(pred);
+		MemIRI memPred = valueFactory.getMemURIOrNull(pred);
 		if (pred != null && memPred == null) {
 			// non-existent predicate
 			return new EmptyIteration<MemStatement, SailException>();
 		}
 
-		MemValue memObj = valueFactory.getMemValue(obj);
+		MemValue memObj = valueFactory.getMemValueOrNull(obj);
 		if (obj != null && memObj == null) {
 			// non-existent object
 			return new EmptyIteration<MemStatement, SailException>();
@@ -187,7 +191,7 @@ class MemorySailStore implements SailStore {
 			smallestList = statements;
 		}
 		else if (contexts.length == 1 && contexts[0] != null) {
-			MemResource memContext = valueFactory.getMemResource(contexts[0]);
+			MemResource memContext = valueFactory.getMemResourceOrNull(contexts[0]);
 			if (memContext == null) {
 				// non-existent context
 				return new EmptyIteration<MemStatement, SailException>();
@@ -200,7 +204,7 @@ class MemorySailStore implements SailStore {
 			Set<MemResource> contextSet = new LinkedHashSet<MemResource>(2 * contexts.length);
 
 			for (Resource context : contexts) {
-				MemResource memContext = valueFactory.getMemResource(context);
+				MemResource memContext = valueFactory.getMemResourceOrNull(context);
 				if (context == null || memContext != null) {
 					contextSet.add(memContext);
 				}
@@ -332,7 +336,7 @@ class MemorySailStore implements SailStore {
 						}
 						catch (InterruptedException e) {
 							Thread.currentThread().interrupt();
-							logger.warn("snapshot cleanup interrupted");
+							logger.warn("snapshot cleanup interrupted", e);
 						}
 					}
 				};
@@ -383,7 +387,7 @@ class MemorySailStore implements SailStore {
 
 		private volatile int nextSnapshot;
 
-		private volatile Set<StatementPattern> observations;
+		private final Set<StatementPattern> observations = new HashSet<StatementPattern>();
 
 		private volatile boolean txnLock;
 
@@ -424,31 +428,29 @@ class MemorySailStore implements SailStore {
 			throws SailException
 		{
 			acquireExclusiveTransactionLock();
-			if (observations != null) {
-				for (StatementPattern p : observations) {
-					Resource subj = (Resource)p.getSubjectVar().getValue();
-					IRI pred = (IRI)p.getPredicateVar().getValue();
-					Value obj = p.getObjectVar().getValue();
-					Var ctxVar = p.getContextVar();
-					Resource[] contexts;
-					if (ctxVar == null) {
-						contexts = new Resource[0];
-					}
-					else {
-						contexts = new Resource[] { (Resource)ctxVar.getValue() };
-					}
-					try (CloseableIteration<MemStatement, SailException> iter = createStatementIterator(subj,
-							pred, obj, null, -1, contexts);)
-					{
-						while (iter.hasNext()) {
-							MemStatement st = iter.next();
-							int since = st.getSinceSnapshot();
-							int till = st.getTillSnapshot();
-							if (serializable < since && since < nextSnapshot
-									|| serializable < till && till < nextSnapshot)
-							{
-								throw new SailConflictException("Observed State has Changed");
-							}
+			for (StatementPattern p : observations) {
+				Resource subj = (Resource)p.getSubjectVar().getValue();
+				IRI pred = (IRI)p.getPredicateVar().getValue();
+				Value obj = p.getObjectVar().getValue();
+				Var ctxVar = p.getContextVar();
+				Resource[] contexts;
+				if (ctxVar == null) {
+					contexts = new Resource[0];
+				}
+				else {
+					contexts = new Resource[] { (Resource)ctxVar.getValue() };
+				}
+				try (CloseableIteration<MemStatement, SailException> iter = createStatementIterator(subj,
+						pred, obj, null, -1, contexts);)
+				{
+					while (iter.hasNext()) {
+						MemStatement st = iter.next();
+						int since = st.getSinceSnapshot();
+						int till = st.getTillSnapshot();
+						if (serializable < since && since < nextSnapshot
+								|| serializable < till && till < nextSnapshot)
+						{
+							throw new SailConflictException("Observed State has Changed");
 						}
 					}
 				}
@@ -470,15 +472,20 @@ class MemorySailStore implements SailStore {
 		@Override
 		public void close() {
 			try {
-				boolean toCloseTxnLock = txnLock;
-				txnLock = false;
-				if (toCloseTxnLock) {
-					txnLockManager.unlock();
-				}
+				observations.clear();
 			}
 			finally {
-				if (txnStLock != null) {
-					txnStLock.release();
+				try {
+					boolean toCloseTxnLock = txnLock;
+					txnLock = false;
+					if (toCloseTxnLock) {
+						txnLockManager.unlock();
+					}
+				}
+				finally {
+					if (txnStLock != null) {
+						txnStLock.release();
+					}
 				}
 			}
 		}
@@ -511,9 +518,6 @@ class MemorySailStore implements SailStore {
 		public synchronized void observe(Resource subj, IRI pred, Value obj, Resource... contexts)
 			throws SailException
 		{
-			if (observations == null) {
-				observations = new HashSet<StatementPattern>();
-			}
 			if (contexts == null) {
 				observations.add(new StatementPattern(new Var("s", subj), new Var("p", pred),
 						new Var("o", obj), new Var("g", null)));
@@ -706,15 +710,17 @@ class MemorySailStore implements SailStore {
 
 			Lock stLock = openStatementsReadLock();
 			try {
-				synchronized (valueFactory) {
-					int snapshot = getCurrentSnapshot();
+				int snapshot = getCurrentSnapshot();
+				synchronized (valueFactory.getUriRegistryLockObject()) {
 					for (MemResource memResource : valueFactory.getMemURIs()) {
 						if (isContextResource(memResource, snapshot)) {
 							contextIDs.add(memResource);
 						}
 					}
+				}
 
-					for (MemResource memResource : valueFactory.getMemBNodes()) {
+				synchronized (valueFactory.getBNodeRegistryLockObject()) {
+					for (MemResource memResource : new ArrayList<>(valueFactory.getMemBNodes())) {
 						if (isContextResource(memResource, snapshot)) {
 							contextIDs.add(memResource);
 						}
@@ -746,18 +752,18 @@ class MemorySailStore implements SailStore {
 			finally {
 				if (!allGood) {
 					try {
-						stLock.release();
+						if (stIter2 != null) {
+							stIter2.close();
+						}
 					}
 					finally {
 						try {
-							if (stIter2 != null) {
-								stIter2.close();
-							}
-						}
-						finally {
 							if (stIter1 != null) {
 								stIter1.close();
 							}
+						}
+						finally {
+							stLock.release();
 						}
 					}
 				}
@@ -779,7 +785,7 @@ class MemorySailStore implements SailStore {
 			MemStatementList contextStatements = memResource.getContextStatementList();
 
 			// Filter resources that are not used as context identifier
-			if (contextStatements.size() == 0) {
+			if (contextStatements.isEmpty()) {
 				return false;
 			}
 

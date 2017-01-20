@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.xml.datatype.DatatypeConfigurationException;
 import javax.xml.datatype.DatatypeFactory;
@@ -40,10 +41,10 @@ public abstract class AbstractValueFactory implements ValueFactory {
 	 * "universal" ID for bnode prefixes to prevent blank node clashes (unique per classloaded instance of
 	 * this class)
 	 */
-	private static long lastBNodePrefixUID = 0;
+	private static final AtomicLong lastBNodePrefixUID = new AtomicLong(System.currentTimeMillis());
 
-	private static synchronized long getNextBNodePrefixUid() {
-		return lastBNodePrefixUID = Math.max(System.currentTimeMillis(), lastBNodePrefixUID + 1);
+	private static long getNextBNodePrefixUid() {
+		return lastBNodePrefixUID.incrementAndGet();
 	}
 
 	private static final DatatypeFactory datatypeFactory;
@@ -64,7 +65,7 @@ public abstract class AbstractValueFactory implements ValueFactory {
 	/**
 	 * The ID for the next bnode that is created.
 	 */
-	private int nextBNodeID;
+	private final AtomicLong nextBNodeID = new AtomicLong(0L);
 
 	/**
 	 * The prefix for any new bnode IDs.
@@ -134,17 +135,17 @@ public abstract class AbstractValueFactory implements ValueFactory {
 	protected void initBNodeParams() {
 		// BNode prefix is based on currentTimeMillis(). Combined with a
 		// sequential number per session, this gives a unique identifier.
-		bnodePrefix = "node" + Long.toString(getNextBNodePrefixUid(), 32) + "x";
-		nextBNodeID = 1;
+		bnodePrefix = "node" + Long.toString(getNextBNodePrefixUid(), 16) + "x";
+		nextBNodeID.set(1L);
 	}
 
 	@Override
-	public synchronized BNode createBNode() {
-		int id = nextBNodeID++;
+	public BNode createBNode() {
+		long id = nextBNodeID.incrementAndGet();
 
 		BNode result = createBNode(bnodePrefix + id);
 
-		if (id == Integer.MAX_VALUE) {
+		if (id == Long.MAX_VALUE) {
 			// Start with a new bnode prefix
 			initBNodeParams();
 		}
