@@ -36,4 +36,15 @@ public interface RioSetting<T extends Object> extends Serializable {
 	 * @return The default value for this parser setting.
 	 */
 	T getDefaultValue();
+	
+	/**
+	 * Attempts to convert from a string to a type-safe representation based on the generic type of this setting.
+	 * 
+	 * @param stringRepresentation The string representation of this setting to convert
+	 * @return A type-safe converted representation of this setting
+	 * @throws RioConfigurationException if conversion from a string is not supported for this setting or the stringRepresentation was not valid
+	 */
+	default T convert(String stringRepresentation) {
+		throw new RioConfigurationException("Conversion not implemented for setting: " + getKey());
+	}
 }
